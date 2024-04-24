@@ -1,0 +1,40 @@
+//@version=5
+indicator("Volume Moving Average with Highlights", overlay=true)
+
+// Define the length
+std_dev = input(30, title="Length of Volume Standard deviation")
+length = input.int(3, title="Volume MA Length")
+
+// Plotting MA
+moving_average = ta.sma(volume, length)
+
+// Calculate the standard deviation of volume over the last n candles
+volumeSD = ta.stdev(volume, std_dev)
+
+ma_std_dev_1 = moving_average + volumeSD
+ma_std_dev_2 = moving_average - volumeSD
+
+// Volume red and Volume green
+volume_green = close > open
+volume_red = close < open 
+
+
+// Conditions for highlighting and placing dots
+volumeAboveMA1 = volume_green and volume > ma_std_dev_1
+volumeBelowMA2 = volume_red and volume > ma_std_dev_1
+
+// Highlighting candle bars
+bgcolor(volumeAboveMA1 ? #1D5F5E : na)
+bgcolor(volumeBelowMA2 ? #813539 : na)
+
+
+// Placing dots under the candles
+plotshape(volumeAboveMA1, style=shape.circle, location=location.belowbar, color=color.green, size=size.tiny)
+plotshape(volumeBelowMA2, style=shape.circle, location=location.belowbar, color=color.red, size=size.tiny)
+
+
+// Plotting the moving averages and standard deviations
+plot(volume, title = "Volume Line", color = color.white, style = plot.style_line, linewidth = 2, display = display.none)
+plot(ma_std_dev_1, title="Moving Average Standard Deviation 1", color=color.green, style=plot.style_line, linewidth=2, display = display.none)
+// plot(ma_std_dev_2, title="Moving Average Standard Deviation 2", color=color.red, style=plot.style_line, linewidth=2)
+// plot(moving_average, title="3-Day MA", color=color.yellow, style=plot.style_line, linewidth=2)

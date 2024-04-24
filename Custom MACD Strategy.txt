@@ -1,0 +1,125 @@
+//@version=5
+strategy(title = "Custom MACD Indicator Based strategy", shorttitle = "CM MACD Strategy", overlay = false, calc_on_every_tick = true, calc_on_order_fills = true, process_orders_on_close = true)
+
+// Input parameters
+src = input.source(close, title = "Source")
+fast_length = input.int(12, title = "Fast Length")
+slow_length = input.int(26, title = "Slow Length")
+signal_length = input.int(9, title = "Signal Length")
+show_macd = input.bool(true, title = "Show MACD & Signal Line")
+show_dots = input.bool(true, title = "Show Dots when MACD Cross")
+show_hist = input.bool(true, title = "Show Histogram")
+macd_color_change = input.bool(true, title = "Change MACD color line when crosses")
+hist_color_change = input.bool(true, title = "MACD Histogram 4 Colors")
+closeMethod = input.string(title="Closing Method", defval="On Next Dot", options=["On Next Dot", "After N Candles"])
+nCandles = input.int(title="Number of Candles for Closing", defval=5, minval=1)
+
+// Additional variables to track the last and second last dots
+var int lastGreenDotIndex = na
+var int secondLastGreenDotIndex = na
+var int lastRedDotIndex = na
+var int secondLastRedDotIndex = na
+var int lastPositionOpenBar = na
+var int positionOpenedBar = na
+var bool canOpenNewPosition = true
+
+res = timeframe.period
+
+// Calculations
+fastMA = ta.ema(src, fast_length)
+slowMA = ta.ema(src, slow_length)
+
+macd = fastMA - slowMA
+signal = ta.sma(macd, signal_length)
+hist = macd - signal
+
+outMacD = request.security(syminfo.tickerid, res, macd)
+outSignal = request.security(syminfo.tickerid, res, signal)
+outHist = request.security(syminfo.tickerid, res, hist)
+
+histA_IsUp = outHist > outHist[1] and outHist > 0
+histA_IsDown = outHist < outHist[1] and outHist > 0
+histB_IsDown = outHist < outHist[1] and outHist <= 0
+histB_IsUp = outHist > outHist[1] and outHist <= 0
+
+macd_IsAbove = outMacD >= outSignal
+macd_IsBelow = outMacD < outSignal
+
+trend_up = ta.crossover(outMacD, outSignal)
+trend_down = ta.crossunder(outMacD, outSignal)
+
+// Variable to track if a position is open
+var bool isLongPositionOpen = false
+var bool isShortPositionOpen = false
+
+// Function to check the sequence for a long position
+isLongSequence() =>
+    not na(secondLastGreenDotIndex) and not na(lastRedDotIndex) and secondLastGreenDotIndex < lastRedDotIndex and lastRedDotIndex < lastGreenDotIndex and (lastGreenDotIndex - secondLastGreenDotIndex) <= 6
+
+// Function to check the sequence for a short position
+isShortSequence() =>
+    not na(secondLastRedDotIndex) and not na(lastGreenDotIndex) and secondLastRedDotIndex < lastGreenDotIndex and lastGreenDotIndex < lastRedDotIndex and (lastRedDotIndex - secondLastRedDotIndex) <= 6
+
+// Updating the indices based on the dot colors
+if (show_dots and trend_up)
+    if (na(lastGreenDotIndex) or bar_index > lastGreenDotIndex)
+        secondLastGreenDotIndex := lastGreenDotIndex
+    lastGreenDotIndex := bar_index
+
+if (show_dots and trend_down)
+    if (na(lastRedDotIndex) or bar_index > lastRedDotIndex)
+        secondLastRedDotIndex := lastRedDotIndex
+    lastRedDotIndex := bar_index
+
+// Conditioning
+hist_col = hist_color_change ? histA_IsUp ? color.new(#00FFFF,0) : histA_IsDown ? color.new(#0000FF, 0) : histB_IsDown ? color.new(#FF0000,0) : histB_IsUp ? color.new(#800000,0) : color.new(#FFFF00,0) : color.new(#808080,0)
+macd_col = macd_color_change ? macd_IsAbove ? color.new(#00FF00,0) : color.new(#FF0000,0) : color.new(#FF0000,0)
+signal_col = macd_color_change ? macd_IsAbove ? color.new(#FFFF00,0) : color.new(#FFFF00,0) : color.new(#00FF00,0)
+
+circleYPosition = outSignal
+
+// Logic for opening positions
+if (isLongSequence() and not isLongPositionOpen and canOpenNewPosition)
+    strategy.entry("Long", strategy.long)
+    isLongPositionOpen := true
+    isShortPositionOpen := false
+    canOpenNewPosition := false
+    positionOpenedBar := bar_index
+
+if (isShortSequence() and not isShortPositionOpen and canOpenNewPosition)
+    strategy.entry("Short", strategy.short)
+    isShortPositionOpen := true
+    isLongPositionOpen := false
+    canOpenNewPosition := false
+    positionOpenedBar := bar_index
+
+// Logic for closing positions based on selected method
+if isLongPositionOpen or isShortPositionOpen
+    if closeMethod == "On Next Dot"
+        if (isLongPositionOpen and trend_down) or (isShortPositionOpen and trend_up)
+            strategy.close_all()
+            isLongPositionOpen := false
+            isShortPositionOpen := false
+            canOpenNewPosition := true
+            lastGreenDotIndex := na
+            secondLastGreenDotIndex := na
+            lastRedDotIndex := na
+            secondLastRedDotIndex := na
+    else if closeMethod == "After N Candles"
+        if bar_index - positionOpenedBar >= nCandles
+            strategy.close_all()
+            isLongPositionOpen := false
+            isShortPositionOpen := false
+            canOpenNewPosition := true
+            lastGreenDotIndex := na
+            secondLastGreenDotIndex := na
+            lastRedDotIndex := na
+            secondLastRedDotIndex := na
+
+// Plots
+plot(show_macd and outMacD ? outMacD : na, title = 'MACD', color = color.new(macd_col, 50), style=plot.style_line, linewidth = 4)
+plot(show_macd and outSignal ? outSignal : na, title="Signal Line", color=color.new(signal_col, 50), style= plot.style_line, linewidth=2)
+plot(show_hist and outHist ? outHist : na, title="Histogram", color=color.new(hist_col, 50), style=plot.style_histogram, linewidth=4)
+plot(show_dots and trend_up ?  circleYPosition : na, title="Dots", color=color.new(macd_col ,30), style=plot.style_circles, linewidth=5, editable=false)
+plot(show_dots and trend_down ?  circleYPosition : na, title="Dots", color=color.new(macd_col ,30), style=plot.style_circles, linewidth=5, editable=false)
+hline(0, '0 Line', linestyle=hline.style_solid, linewidth=2, color=color.white)

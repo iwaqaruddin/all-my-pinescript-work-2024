@@ -1,0 +1,67 @@
+//@version=5
+indicator('Custom Bollinger Bands', overlay=true)
+
+// Calculating the 100-day Simple Moving Average
+length = input.int(100, "Number of candles to lookback",  minval=1, maxval=250, step=1)
+mult = input.float(2.0, "Standard Deviation")
+src = close
+
+// simple moving Average
+sma = ta.sma(src, length)
+
+// Calculating Bollinger Bands
+upperBB = sma + mult * ta.stdev(src, length)
+lowerBB = sma - mult * ta.stdev(src, length)
+
+// New extended lines
+upperBBExt = sma + 2 * mult * ta.stdev(src, length)
+lowerBBExt = sma - 2 * mult * ta.stdev(src, length)
+
+// Plotting Bollinger Bands
+plot(sma, "Simple Moving Average", color = color.blue, linewidth = 2)
+plotUpper = plot(upperBB, "Upper Bollinger Bands", color=color.red, linewidth=2)
+plotLower = plot(lowerBB, "Lower Bollinger Bands", color=color.green, linewidth=2)
+plotUpperExt = plot(upperBBExt, "Upper Extension", color=color.red, linewidth=1)
+plotLowerExt = plot(lowerBBExt, "Lower Extension", color=color.green, linewidth=1)
+
+// Fill between original and extended Bollinger Bands
+fill(plotUpper, plotUpperExt, color=color.new(color.red, 80), title = "Upper Region")
+fill(plotLower, plotLowerExt, color=color.new(color.green, 80), title = "Lower Region")
+
+
+// Conditions for overextended areas
+overExtendedUp = close > upperBB
+overExtendedDown = close < lowerBB
+
+// Variables to track the state transitions
+var bool wasOverExtendedUpPreviously = false
+var bool wasOverExtendedDownPreviously = false
+
+// Determine the transition for plotting
+var bool plotUpShape = false
+var bool plotDownShape = false
+
+// Logic to detect state transitions
+if overExtendedUp
+    if not wasOverExtendedUpPreviously and not wasOverExtendedDownPreviously
+        plotUpShape := true
+    else
+        plotUpShape := false
+    wasOverExtendedUpPreviously := true
+    wasOverExtendedDownPreviously := false
+else if overExtendedDown
+    if not wasOverExtendedDownPreviously and not wasOverExtendedUpPreviously
+        plotDownShape := true
+    else
+        plotDownShape := false
+    wasOverExtendedDownPreviously := true
+    wasOverExtendedUpPreviously := false
+else
+    wasOverExtendedUpPreviously := false
+    wasOverExtendedDownPreviously := false
+    plotUpShape := false
+    plotDownShape := false
+
+// Plotting shapes
+plotshape(series=plotUpShape, title='Overextended Up', location=location.abovebar, color=color.red, style=shape.circle, size=size.tiny)
+plotshape(series=plotDownShape, title='Overextended Down', location=location.belowbar, color=color.green, style=shape.circle, size=size.tiny)

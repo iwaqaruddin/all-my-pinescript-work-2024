@@ -1,0 +1,93 @@
+//@version=5
+indicator("Candlestick Counter", overlay=true)
+
+// Input for the number of candles to look back
+lookback = input.int(30, "Number of candles to look back", minval=0, maxval=150, step=1, confirm=true)
+
+// Counters for green and red candles
+var int greenCandles = 0
+var int redCandles = 0
+var float totalPercentageChange = na
+
+// Find the highest high and lowest low in the lookback period
+var float highestHigh = na
+var float lowestLow = na
+
+// Creating a box for the lookback period
+var box lookbackBox = na
+
+// Variable to store the label
+var label lookbackLabel = na
+
+// Variable for the trend line
+var line trendLine = na
+
+if barstate.islast
+    // Reset the counters for each calculation
+    greenCandles := 0
+    redCandles := 0
+    highestHigh := high[0]
+    lowestLow := low[0]
+
+    // Loop through the last 'lookback' candles
+    for i = 0 to lookback - 1
+        if close[i] > open[i]
+            greenCandles := greenCandles + 1
+        else if close[i] < open[i]
+            redCandles := redCandles + 1
+
+        // Update highest high and lowest low
+        if high[i] > highestHigh
+            highestHigh := high[i]
+        if low[i] < lowestLow
+            lowestLow := low[i]
+
+    // Calculating the total percentage gain/loss for the lookback period
+    totalPercentageChange := ((close[0] - close[lookback - 1]) / close[lookback - 1]) * 100
+
+    // Determine box color based on total percentage change
+    boxColor = totalPercentageChange > 0 ? color.green : color.red
+
+    // Define the coordinates for the box
+    boxStart = bar_index - lookback + 1
+    boxEnd = bar_index
+
+    // Create or update the box
+    if na(lookbackBox)
+        lookbackBox := box.new(left=boxStart, top=highestHigh, right=boxEnd, bottom=lowestLow, bgcolor=color.new(boxColor, 90), border_color=boxColor)
+    else
+        box.set_left(lookbackBox, boxStart)
+        box.set_right(lookbackBox, boxEnd)
+        box.set_top(lookbackBox, highestHigh)
+        box.set_bottom(lookbackBox, lowestLow)
+        box.set_bgcolor(lookbackBox, color.new(boxColor, 90))
+        box.set_border_color(lookbackBox, boxColor)
+
+    // Calculate the middle bar index for the label
+    int middleBarIndex = boxStart + math.round((boxEnd - boxStart) / 2)
+
+    // Delete the existing label if it exists
+    if na(lookbackLabel) != true
+        label.delete(lookbackLabel)
+
+    // Create a new label for the lookback summary
+    lookbackLabel := label.new(x=middleBarIndex, y=lowestLow, text="Green: " + str.tostring(greenCandles) + " Red: " + str.tostring(redCandles) + "\nTotal % Change: " + str.tostring(totalPercentageChange), style=label.style_label_up, color=color.white, yloc=yloc.price)
+
+    // Delete the existing trend line if it exists
+    if na(trendLine) != true
+        line.delete(trendLine)
+
+    // Determine the color of the trend line based on total percentage change
+    lineColor = totalPercentageChange > 0 ? color.green : color.red
+
+    // Create a new trend line from the first to the last candle of the lookback period
+    trendLine := line.new(x1=bar_index - lookback + 1, y1=close[lookback - 1], x2=bar_index, y2=close[0], width=1, color=lineColor)
+
+// Main script for additional labels
+if barstate.islast
+    // Label for the last candle's closing price
+    label.new(bar_index, high, text="" + str.tostring(close[0]), color=color.blue, style=label.style_label_down, yloc=yloc.abovebar)
+
+    // Label for the 30th candle's closing price
+    if bar_index >= lookback - 1
+        label.new(bar_index - lookback + 1, high[lookback - 1], text="" + str.tostring(close[lookback - 1]), color=color.green, style=label.style_label_down, yloc=yloc.abovebar)

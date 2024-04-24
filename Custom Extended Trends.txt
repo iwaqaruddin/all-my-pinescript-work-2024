@@ -1,0 +1,99 @@
+//@version=5
+indicator('Custom Extended Trends', overlay = true, max_lines_count = 500)
+
+int point1x = input.time(0, 'X1', confirm = true, inline = 'First Point', group = 'Set Angles', display = display.none)
+float point1y = input.price(0, 'Y1', confirm = true, inline = 'First Point', group = 'Set Angles', display = display.none)
+
+int point2x = input.time(0, 'X2', confirm = true, inline = 'Second Point', group = 'Set Angles', display = display.none)
+float point2y = input.price(0, 'Y2', confirm = true, inline = 'Second Point', group = 'Set Angles', display = display.none)
+
+int point3x = input.time(0, 'X3', confirm = true, inline = 'Third Point', group = 'Set Angles', display = display.none)
+float point3y = input.price(0, 'Y3', confirm = true, inline = 'Third Point', group = 'Set Angles', display = display.none)
+
+int numberOfLines = input.int(50, 'Number of Lines to Extend in Each Direction', group = 'Input Settings', display = display.none)
+int numberOfIntervals = input.int(1, 'Input Intervals' ,minval = 1,tooltip = 'Number of sub-channels to divide each channel into.', group = 'Input Settings', display = display.none)
+linewidth = input.int(1, 'Set Linewidth', maxval=3)
+intervallinewidth = input.int(2, 'Set Fourth Linewidth', maxval=3)
+backgroundColor = input.bool(true, "Background Color")
+PerpendicularLines = input.bool(false, "Perpendicular Lines")
+
+string solidStyle  = '⎯⎯'
+string dashedStyle = '- - -'
+string dottedStyle = '·······'
+string styleSettings = input.string(dashedStyle, 'Line Style', options = [solidStyle, dashedStyle, dottedStyle], group = 'PLot Settings', display = display.none)
+string STYLE = switch styleSettings
+    solidStyle => line.style_solid
+    dashedStyle => line.style_dashed
+    dottedStyle => line.style_dotted
+color lineColor = input.color(color.rgb(15, 115, 228), title = 'Line Color', group = 'PLot Settings', display = display.none)
+color pointsColor = input.color(#e95b1a, 'Points Color', group = 'PLot Settings', display = display.none)
+color background_color = input.color(color.rgb(60, 63, 60, 100), 'Background Color', group = 'PLot Settings', display = display.none)
+
+// @function pointsMarked the anchor points so that it's easier to spot them in the chart.
+// @param x The x coordinate (UNIX timestamp).
+// @param y The y coordinate (price).
+pointsMarked(int x, float y) =>
+    label.new(x, y, xloc = xloc.bar_time, style = label.style_circle, size = size.tiny, color = pointsColor)
+
+// timestamp delta between adjacent bars can be variable, which can cause troubles in the slope calculation later.
+var int x1 = na
+var int x2 = na
+var int x3 = na
+
+if na(x1) and time >= point1x
+    x1 := bar_index
+if na(x2) and time >= point2x
+    x2 := bar_index
+if na(x3) and time >= point3x
+    x3 := bar_index
+
+var plotted = false
+if barstate.islast and not plotted
+    plotted := true
+
+    pointsMarked(point1x, point1y)
+    pointsMarked(point2x, point2y)
+    pointsMarked(point3x, point3y)
+
+    int dx = x2 - x1
+    int dx1 = x3 - x1
+    float dy = point2y - point1y
+    float dy1 = point3y - point1y
+    // Calculate the x and y distances between point1 and point2
+    var float priceDistance = na
+    var int timeDistance = na
+
+    if not na(x1) and not na(x2)
+        priceDistance := math.abs(point2y - point1y)
+        timeDistance := math.abs(x2 - x1)
+
+    if dx != 0
+        float k = dy / dx
+        float k1 = dy1/dx1
+        float b1 = point1y - k * x1
+        float b3 = point3y - k * x3
+        float b1a = point1y - k1 * x1
+        float b3a = point3y - k1 * x3
+        degree = math.atan(k) * (180 / math.pi)
+        degree1 = math.atan(k1) * (180 / math.pi)
+        // Plot the channels
+        float db = (b3 - b1) / numberOfIntervals
+        float db1 = (b3a - b1a) / numberOfIntervals
+        int num = numberOfLines * numberOfIntervals
+        for i = -num to num + 1
+            // Check if the current line is the 4th line in the sequence
+            lineWidth = i % 4 == 0 ? intervallinewidth : linewidth
+            line.new(x1, point1y + db * i, x2, point2y + db * i, xloc.bar_index, extend.both, lineColor, STYLE, width = lineWidth)
+
+        int num1 = numberOfLines * numberOfIntervals   
+        for i = -num1 to num1 + 1
+            // Check if the current line is the 4th line in the sequence
+            lineWidth = i % 4 == 0 ? intervallinewidth : linewidth
+            line.new(PerpendicularLines ? x1: na, point1y + db * i, x2 - timeDistance*2, point2y + db * i, xloc.bar_index, extend.both, lineColor, STYLE, width = lineWidth)
+
+        // Fill the background for the main channel.
+        if backgroundColor
+            line a = line.new(x1, point1y, x2, point2y, xloc.bar_index, extend.both, #00000000, width = linewidth)
+            line b = line.new(x1, k * x1 + b3, x2, k * x2 + b3, xloc.bar_index, extend.both, #00000000, width = linewidth)
+            linefill.new(a, b, background_color)
+//The End.

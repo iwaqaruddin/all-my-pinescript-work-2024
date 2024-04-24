@@ -1,0 +1,77 @@
+//@version=5
+strategy("Liquidity Scalp", overlay=true, backtest_fill_limits_assumption = 3, process_orders_on_close=false, calc_on_every_tick=false, max_bars_back=500, max_labels_count=500, initial_capital=100000, currency=currency.USD)
+
+// Inputs
+tp_ticks = input.int(5, title="Take Profit (Ticks)")
+sl_ticks = input.int(10, title="Stop Loss (Ticks)")
+sl_bars = input.int(5, title="Stop Loss After X Bars")
+long = true
+short = true
+tickcount = input.int(5, "Tick Count", minval=0)
+
+isCurstomSession = input.bool(true,"",inline = "session1")
+sessionTimeZone = input.string("America/New_York","Set Timezone",inline="session1",options=["UTC","America/New_York","America/Los_Angeles","America/Chicago","America/Phoenix","America/Toronto","America/Vancouver","America/Argentina/Buenos_Aires","America/El_Salvador","America/Sao_Paulo","America/Bogota","Europe/Moscow","Europe/Athens","Europe/Berlin","Europe/London","Europe/Madrid","Europe/Paris","Europe/Warsaw","Australia/Sydney","Australia/Brisbane","Australia/Adelaide","Australia/ACT","Asia/Almaty","Asia/Ashkhabad","Asia/Tokyo","Asia/Taipei","Asia/Singapore","Asia/Shanghai","Asia/Seoul","Asia/Tehran","Asia/Dubai","Asia/Kolkata","Asia/Hong_Kong","Asia/Bangkok","Pacific/Auckland","Pacific/Chatham","Pacific/Fakaofo","Pacific/Honolulu"])
+
+startTime = input.time(timestamp("3 Dec 2023 00:00"), group="Date Settings") 
+endTime = input.time(timestamp("1 Jan 2091 00:00"), group="Date Settings") 
+inDateRange = time >= startTime and time < endTime
+
+group_sess = "----------------------- Session Trade-----------------------"
+isS1 =  input.bool(true,"",group = group_sess,inline = "s11")
+Session_1        = input.session(title="Session ", defval="0930-1600",inline="s11",group = group_sess)
+
+isInSession_ = na(time(timeframe.period, Session_1 + ":1234567",isCurstomSession ? sessionTimeZone : syminfo.timezone)) == false 
+
+isInSession_1 = isS1 ? isInSession_ : true
+isSessionOut  =  isInSession_[1] and not isInSession_
+
+// Logic for SL based on bars since entry
+var float stop_loss = na
+var float sstop_loss = na
+
+// Entry logic
+if isInSession_1 and inDateRange and barstate.isconfirmed
+    if long
+        strategy.entry("Long", strategy.long, limit=low - (tickcount * syminfo.mintick), comment="Long")
+    if short
+        strategy.entry("Short", strategy.short, limit=high + (tickcount * syminfo.mintick), comment="Short")
+
+currEntryPrice = strategy.opentrades.entry_price(strategy.opentrades - 1)
+take_profit_price = currEntryPrice + (tp_ticks * syminfo.mintick)
+stake_profit_price = currEntryPrice - (tp_ticks * syminfo.mintick)
+
+BarsSinceLastEntry() =>
+    strategy.opentrades > 0 ? bar_index - strategy.opentrades.entry_bar_index(strategy.opentrades - 1) : na
+
+
+// Modified TP and SL logic
+var float tpPriceLong = na
+var float tpPriceShort = na
+var float slPriceLong = na
+var float slPriceShort = na
+
+// Update TP and SL prices
+if (strategy.position_size > 0)
+    tpPriceLong := currEntryPrice + (tp_ticks * syminfo.mintick)
+    slPriceLong := currEntryPrice - (sl_ticks * syminfo.mintick)
+else if (strategy.position_size < 0)
+    tpPriceShort := currEntryPrice - (tp_ticks * syminfo.mintick)
+    slPriceShort := currEntryPrice + (sl_ticks * syminfo.mintick)
+
+// Function to determine if TP or SL should be executed
+executeTpOrSl() =>
+    if isInSession_1 and inDateRange and barstate.isconfirmed
+        if (strategy.position_size > 0) and long
+            if (close >= tpPriceLong or BarsSinceLastEntry() >= sl_bars)
+                strategy.exit("TP/SL Long", from_entry="Long", limit=tpPriceLong, stop=slPriceLong, comment = "TP", comment_loss = "SL")
+        else if (strategy.position_size < 0) and short
+            if (close <= tpPriceShort or BarsSinceLastEntry() >= sl_bars)
+                strategy.exit("TP/SL Short", from_entry="Short", limit=tpPriceShort, stop=slPriceShort, comment = "TP", comment_loss = "SL")
+
+// Execute TP or SL based on the conditions
+executeTpOrSl()
+
+// Session Out condition
+if isSessionOut
+    strategy.cancel_all()
+    strategy.close_all("Session Out")

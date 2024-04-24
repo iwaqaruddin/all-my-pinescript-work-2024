@@ -1,0 +1,165 @@
+//@version=5
+indicator("Chart Pattern Detection", max_lines_count=500, max_labels_count=500, overlay=true, max_bars_back = 5000)
+import HeWhoMustNotBeNamed/zigzag/14 as zg
+import HeWhoMustNotBeNamed/arrays/1 as pa
+import HeWhoMustNotBeNamed/utils/1 as utils
+//This script is coded by @IAbdullahBinNasir
+maxBarsBack = 1000
+max_bars_back(open, maxBarsBack)
+max_bars_back(high, maxBarsBack)
+max_bars_back(low, maxBarsBack)
+max_bars_back(close, maxBarsBack)
+
+labelColor = input.color(color.orange, "Labels Color", group = 'Chart Pattern Detection')
+lineColor = input.color(color.white, "Lines Color")
+differenceCandles = input.bool(true, "Candles Difference from point 3 to 4 > point to 2 to 3 ?")
+// pointbPosition = input.string('Above Point 2', "Point 4 Position", options = ['Above Point 2', 'Percentage Below'] )
+// PointbPercentageAbove = input.float(5.0, "Above Percentage", minval = 1.0, maxval = 150.0, inline = '0') * 0.01
+// PointbPercentageBelow = input.float(5.0, "Below Percentage", minval = 1.0, maxval = 150.0, inline = '0') * 0.01
+pointaPosition = input.string('Equal with Percentage settings', "Point 5 Position", options = ['Equal with Percentage settings', 'Not Equal with Percentage settings'] )
+PointaPercentageAbove = input.float(5.0, "Above Percentage", minval = 1.0, maxval = 150.0, inline = '1') * 0.01
+PointaPercentageBelow = input.float(2.0, "Below Percentage", minval = 1.0, maxval = 150.0, inline = '1') * 0.01
+avoidOverlap = true
+drawPattern = true
+showPattern = true
+showPattern2 = true
+showPattern3 = true
+showPattern4 =true
+Pattern1Length = 5
+Pattern2Length = 8
+Pattern3Length = 13
+Pattern4Length = 21
+
+alertPattern = input.bool(true, 'Alert only after the confirmation of the bar', 'Avoids repainting due to real time bar updates', group='Alert', display = display.none)
+
+maxPatternsReference = 10
+
+var aIndices = array.new_int()
+var bIndices = array.new_int()
+var cIndices = array.new_int()
+var dIndices = array.new_int()
+var eIndices = array.new_int()
+var fIndices = array.new_int()
+
+add_new_Pattern(a, b, c, d, e, f, aIndex, bIndex, cIndex, dIndex, eIndex, fIndex, labelColor)=>
+    dir = a > b ? 1 : -1
+
+    pa.unshift(aIndices, aIndex, maxPatternsReference)
+    pa.unshift(bIndices, bIndex, maxPatternsReference)
+    pa.unshift(cIndices, cIndex, maxPatternsReference)
+    pa.unshift(dIndices, dIndex, maxPatternsReference)
+    pa.unshift(eIndices, eIndex, maxPatternsReference)
+    pa.unshift(fIndices, fIndex, maxPatternsReference)
+    array<line> PatternLines = array.new<line>()
+    array<label> PatternLabels = array.new<label>()
+
+    if(drawPattern)
+        PatternLines.push(line.new(bIndex, b, aIndex, a, color = lineColor))
+        PatternLines.push(line.new(cIndex, c, bIndex, b, color = lineColor))
+        PatternLines.push(line.new(dIndex, d, cIndex, c, color = lineColor))
+        PatternLines.push(line.new(eIndex, e, dIndex, d, color = lineColor))
+        PatternLines.push(line.new(fIndex, f, eIndex, e, color = lineColor))
+
+        PatternLabels.push(label.new(aIndex, a, 'Point 5', style=label.style_none, yloc=dir > 0 ? yloc.abovebar : yloc.belowbar, textcolor=labelColor))
+        PatternLabels.push(label.new(bIndex, b, 'Point 4', style=label.style_none, yloc=dir < 0 ? yloc.abovebar : yloc.belowbar, textcolor=labelColor))
+        PatternLabels.push(label.new(cIndex, c, 'Point 3', style=label.style_none, yloc=dir > 0 ? yloc.abovebar : yloc.belowbar, textcolor=labelColor))
+        PatternLabels.push(label.new(dIndex, d, 'Point 2', style=label.style_none, yloc=dir < 0 ? yloc.abovebar : yloc.belowbar, textcolor=labelColor))
+        PatternLabels.push(label.new(eIndex, e, 'Point 1', style=label.style_none, yloc=dir > 0 ? yloc.abovebar : yloc.belowbar, textcolor=labelColor))
+        PatternLabels.push(label.new(fIndex, f, 'Point 0', style=label.style_none, yloc=dir < 0 ? yloc.abovebar : yloc.belowbar, textcolor=labelColor))
+    [PatternLines, PatternLabels]
+
+
+find_Pattern(a, b, c, d, e, f, aIndex, bIndex, cIndex, dIndex, eIndex, fIndex, labelColor)=>
+    var bool isPattern = false
+    existingPattern = false
+    for i=0 to array.size(aIndices)==0? na: array.size(aIndices)-1
+        commonPivots = (array.get(aIndices, i) == aIndex ? 1 : 0) +
+                       (array.get(bIndices, i) == bIndex ? 1 : 0) +
+                       (array.get(cIndices, i) == cIndex ? 1 : 0) +
+                       (array.get(dIndices, i) == dIndex ? 1 : 0) +
+                       (array.get(eIndices, i) == eIndex ? 1 : 0) +
+                       (array.get(fIndices, i) == fIndex ? 1 : 0)
+
+        if (commonPivots >= 2) or (avoidOverlap and eIndex < array.get(aIndices, i) and eIndex > array.get(eIndices, i))
+            existingPattern := true
+            break
+    // isPointbPosition = pointbPosition == 'Above Point 2' ?  b > d : pointbPosition == 'Percentage Below' ? b <= d - (d * PointbPercentageBelow) : na 
+    isPointaPosition = pointaPosition == 'Equal with Percentage settings' ? a==e or a <= e - (e * PointaPercentageBelow) or a >= e + (e * PointaPercentageAbove) : a <= e - (e * PointaPercentageBelow) or a >= e + (e * PointaPercentageAbove)
+
+    if not existingPattern
+        isPatternFound =  c > a and e > d and e < c and b > d and b < c and f < d and b < e and isPointaPosition
+        isPattern := isPatternFound
+
+    if not existingPattern
+        aRatio = math.abs(a - b) / math.abs(b - c)
+        bRatio = math.abs(b - c) / math.abs(c - d)
+        cRatio = math.abs(c - d) / math.abs(d - e)
+        IndexBetween2and3 = cIndex - bIndex
+        IndexBetween3and4 = dIndex - cIndex
+        candleCondition = differenceCandles ? IndexBetween3and4 > IndexBetween2and3 : true
+        isPatternFound = c > a and e > d and e < c and b > d and b < c and f < d and b < e and candleCondition and isPointaPosition
+        isPattern := isPatternFound
+
+        deleteDrawing = true
+        if isPattern
+ 
+            if isPattern
+                dir = e > d ? 1 : -1
+                deleteDrawing := false
+                [PatternLines, PatternLabels] = add_new_Pattern(a, b, c, d, e, f, aIndex, bIndex, cIndex, dIndex, eIndex, fIndex, labelColor)
+                alert('New Pattern pattern found', alertPattern ? alert.freq_once_per_bar_close : alert.freq_once_per_bar)
+
+scan_patterns(startIndex, newPivot, zigzagpivots, zigzagpivotbars, lastAIndex)=>
+    length = array.size(zigzagpivots)
+    numberOfPivots = 6
+    newLastAIndex = lastAIndex
+    if (length >= startIndex + numberOfPivots + 1 and newPivot)
+        a = array.get(zigzagpivots, startIndex)
+        aIndex = array.get(zigzagpivotbars, startIndex)
+        if (aIndex != lastAIndex)
+            newLastAIndex := aIndex
+            b = array.get(zigzagpivots, startIndex + 1)
+            bIndex = array.get(zigzagpivotbars, startIndex + 1)
+            c = array.get(zigzagpivots, startIndex+2)
+            cIndex = array.get(zigzagpivotbars, startIndex+2)
+            d = array.get(zigzagpivots, startIndex+3)
+            dIndex = array.get(zigzagpivotbars, startIndex+3)
+            e = array.get(zigzagpivots, startIndex+4)
+            eIndex = array.get(zigzagpivotbars, startIndex+4)
+            f = array.get(zigzagpivots, startIndex+5)
+            fIndex = array.get(zigzagpivotbars, startIndex+5)
+            g = f
+            gIndex = fIndex
+            find_Pattern(a, b, c, d, e,f,  aIndex, bIndex, cIndex, dIndex, eIndex,fIndex, labelColor)
+    newLastAIndex
+
+startIndex = 0
+if (showPattern)
+    [zigzagpivots, zigzagpivotbars, _, _, _, _, _, _, _, newPivot, doublePivot] = zg.czigzag(Pattern1Length)
+    var lastAIndex = 0
+    lastAIndex := scan_patterns(startIndex + 1, doublePivot, zigzagpivots, zigzagpivotbars, lastAIndex)
+    lastAIndex := scan_patterns(startIndex, newPivot, zigzagpivots, zigzagpivotbars, lastAIndex)
+
+// showPattern2 Section
+if (showPattern2)
+    [zigzagpivots, zigzagpivotbars, _, _, _, _, _, _, _, newPivot, doublePivot] = zg.czigzag(Pattern2Length)
+    var lastAIndex = 0
+    lastAIndex := scan_patterns(startIndex + 1, doublePivot, zigzagpivots, zigzagpivotbars, lastAIndex)
+    lastAIndex := scan_patterns(startIndex, newPivot, zigzagpivots, zigzagpivotbars, lastAIndex)
+
+// showPattern3 Section
+if (showPattern3)
+    [zigzagpivots, zigzagpivotbars, _, _, _, _, _, _, _, newPivot, doublePivot] = zg.czigzag(Pattern3Length)
+    var lastAIndex = 0
+    lastAIndex := scan_patterns(startIndex + 1, doublePivot, zigzagpivots, zigzagpivotbars, lastAIndex)
+    lastAIndex := scan_patterns(startIndex, newPivot, zigzagpivots, zigzagpivotbars, lastAIndex)
+
+// showPattern4 Section
+if (showPattern4)
+    [zigzagpivots, zigzagpivotbars, _, _, _, _, _, _, _, newPivot, doublePivot] = zg.czigzag(Pattern4Length)
+    var lastAIndex = 0
+    lastAIndex := scan_patterns(startIndex + 1, doublePivot, zigzagpivots, zigzagpivotbars, lastAIndex)
+    lastAIndex := scan_patterns(startIndex, newPivot, zigzagpivots, zigzagpivotbars, lastAIndex)
+
+alert('New Chart pattern found', alertPattern ? alert.freq_once_per_bar_close : alert.freq_once_per_bar)
+//The End

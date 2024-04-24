@@ -1,0 +1,134 @@
+//@version=5
+indicator("Target Projections", overlay = true)
+
+// Input parameters
+lookback = input.int(14, "Number of candles to lookback",  minval=0, maxval=100, step=1, confirm=true)
+length = input.int(14, "Number of candles to predict",  minval=0, step=1, confirm=true)
+show_avg_gain_loss_label = input.bool(true, "Show Avg Gain/Loss Label")
+predicted_price_colour = input.color(color.white, title="Predicted Price Line")
+upward_channel_price_colour = input.color(color.green, title="Upward Channel Price Line")
+downward_channel_price_colour = input.color(color.red, title="Downward Channel Price Line")
+pullback_zone_value_1_colour = input.color(#34A853, title="Pullback Zone 1 Color")
+pullback_zone_value_2_colour = input.color(#FF6D01, title="Pullback Zone 2 Color")
+target_zone_value_1_colour = input.color(#46BDC6, title="Target Zone 1 Color")
+target_zone_value_2_colour = input.color(#7BAAF7, title="Target Zone 2 Color")
+
+// Global variables for line IDs
+var line predicted_line_id = na
+var line upward_channel_line_id = na
+var line downward_channel_line_id = na
+var line pullback_zone_1_line_id = na
+var line target_zone_1_line_id = na
+var line pullback_zone_2_line_id = na
+var line target_zone_2_line_id = na
+var label avg_gain_loss_label_id = na
+
+// Define your prices here
+prices = array.new_float(lookback, na)
+
+for i = 0 to array.size(prices) - 1
+    array.set(prices, i, close[i])
+
+// Function to calculate gain/loss
+calculateGainLoss(index) =>
+    if index > 0
+        ((array.get(prices, index - 1) - array.get(prices, index)) / array.get(prices, index))
+    else
+        na
+
+gainLossArray = array.new_float(lookback, na)
+for i = 1 to array.size(prices) - 1
+    gainLoss = calculateGainLoss(i)
+    array.set(gainLossArray, i, gainLoss)
+
+// Alternatively, you can plot these values
+gainLossAverage = 1 +  array.avg(gainLossArray)
+
+if barstate.islast
+    if show_avg_gain_loss_label
+        if not na(avg_gain_loss_label_id)
+            label.delete(avg_gain_loss_label_id)
+        avg_gain_loss_label_id := label.new(bar_index, high, "Avg Gain/Loss: " + str.tostring(gainLossAverage), color=color.blue)
+
+gainLossStdDev = array.stdev(gainLossArray)
+
+predicted_prices = array.new_float(length, na)
+array.set(predicted_prices, 0, (array.get(prices, 0) * gainLossAverage))
+for i = 1 to array.size(predicted_prices) - 1
+    array.set(predicted_prices, i, (array.get(predicted_prices, i-1) * gainLossAverage))
+
+predicted_prices_std_dev = array.stdev(predicted_prices)
+
+upward_channel_prices = array.new_float(length, na)
+array.set(upward_channel_prices, 0, (array.get(predicted_prices, 0) + predicted_prices_std_dev))
+for i = 1 to array.size(upward_channel_prices) - 1
+    array.set(upward_channel_prices, i, (array.get(predicted_prices, i-1) + predicted_prices_std_dev))
+
+downward_channel_prices = array.new_float(length, na)
+array.set(downward_channel_prices, 0, (array.get(predicted_prices, 0) - predicted_prices_std_dev))
+for i = 1 to array.size(downward_channel_prices) - 1
+    array.set(downward_channel_prices, i, (array.get(predicted_prices, i-1) - predicted_prices_std_dev))
+
+// Function to plot predicted prices
+plotPredictedPrices() =>
+    if not na(predicted_line_id)
+        line.delete(predicted_line_id)
+    first_point_price = array.get(predicted_prices, 0)
+    last_point_index = array.size(predicted_prices) - 1
+    last_point_price = array.get(predicted_prices, last_point_index)
+    line.new(bar_index, first_point_price, bar_index + last_point_index, last_point_price, width=1, color=predicted_price_colour)
+
+// Function to draw upward channel
+drawUpwardChannel() =>
+    if not na(upward_channel_line_id)
+        line.delete(upward_channel_line_id)
+    first_point_price = array.get(upward_channel_prices, 0)
+    last_point_index = array.size(upward_channel_prices) - 1
+    last_point_price = array.get(upward_channel_prices, last_point_index)
+    line.new(bar_index, first_point_price, bar_index + last_point_index, last_point_price, width=1, color=upward_channel_price_colour)
+
+// Function to draw downward channel
+drawDownwardChannel() =>
+    if not na(downward_channel_line_id)
+        line.delete(downward_channel_line_id)
+    first_point_price = array.get(downward_channel_prices, 0)
+    last_point_index = array.size(downward_channel_prices) - 1
+    last_point_price = array.get(downward_channel_prices, last_point_index)
+    line.new(bar_index, first_point_price, bar_index + last_point_index, last_point_price, width=1, color=downward_channel_price_colour)
+
+// Function to draw Pullback Zone 1
+plotPullbackZone1() =>
+    if not na(pullback_zone_1_line_id)
+        line.delete(pullback_zone_1_line_id)
+    pullback_zone_value_1 = array.get(upward_channel_prices, 0) - (1 * predicted_prices_std_dev)
+    line.new(bar_index + 5, pullback_zone_value_1, bar_index, pullback_zone_value_1, width=1, color=pullback_zone_value_1_colour, style=line.style_dashed)
+
+// Function to draw Target Zone 1
+plotTargetZone1() =>
+    if not na(target_zone_1_line_id)
+        line.delete(target_zone_1_line_id)
+    target_zone_value_1 = array.get(predicted_prices, 0) + (1 * predicted_prices_std_dev)
+    line.new(bar_index + 5, target_zone_value_1, bar_index, target_zone_value_1, width=1, color=target_zone_value_1_colour, style=line.style_dashed)
+
+// Function to draw Pullback Zone 2
+plotPullbackZone2() =>
+    if not na(pullback_zone_2_line_id)
+        line.delete(pullback_zone_2_line_id)
+    pullback_zone_value_2 = array.get(predicted_prices, 0) - (1 * predicted_prices_std_dev)
+    line.new(bar_index + 10, pullback_zone_value_2, bar_index + 15, pullback_zone_value_2, width=1, color=pullback_zone_value_2_colour, style=line.style_dashed)
+
+// Function to draw Target Zone 2
+plotTargetZone2() =>
+    if not na(target_zone_2_line_id)
+        line.delete(target_zone_2_line_id)
+    target_zone_value_2 = array.get(upward_channel_prices, 0) + (1 * predicted_prices_std_dev)
+    line.new(bar_index + 10, target_zone_value_2, bar_index + 15, target_zone_value_2, width=1, color=target_zone_value_2_colour, style=line.style_dashed)
+
+if barstate.islast
+    predicted_line_id := plotPredictedPrices()
+    upward_channel_line_id := drawUpwardChannel()
+    downward_channel_line_id := drawDownwardChannel()
+    pullback_zone_1_line_id := plotPullbackZone1()
+    target_zone_1_line_id := plotTargetZone1()
+    pullback_zone_2_line_id := plotPullbackZone2()
+    target_zone_2_line_id := plotTargetZone2()
